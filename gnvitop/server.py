@@ -63,7 +63,9 @@ _MX_PROC_QUERY = (
 # ── Auto-detect: try nvidia-smi first, fall back to mx-smi ───────────────────
 # Output begins with "NVIDIA\n" or "MX\n" so the parser knows which format follows
 COMBINED_CMD = (
-    "if command -v nvidia-smi >/dev/null 2>&1 && nvidia-smi -L >/dev/null 2>&1; then "
+    "if command -v nvidia-smi >/dev/null 2>&1 && "
+    "nvidia-smi --query-gpu=index --format=csv,noheader,nounits 2>/dev/null "
+    "| grep -Eq '^[[:space:]]*[0-9]+[[:space:]]*$'; then "
     "echo NVIDIA; " + _GPU_QUERY + "; echo '---SEP---'; " + _PROC_QUERY + "; "
     "elif command -v mx-smi >/dev/null 2>&1; then "
     "echo MX; mx-smi 2>/dev/null; echo '---SEP---'; " + _MX_PROC_QUERY + "; "
