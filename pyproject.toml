@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "gnvitop"
-version = "0.5.1"
+version = "0.5.2"
 description = "Global nvitop: web-based GPU & TPU monitoring dashboard for all your remote servers via SSH"
 readme = "README.md"
 license = "MIT"
