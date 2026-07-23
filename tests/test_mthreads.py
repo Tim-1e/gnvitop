@@ -3,12 +3,14 @@ import subprocess
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from gnvitop.server import (
     COMBINED_CMD,
     _attach_processes,
     _build_mthreads_gpus,
     _parse_combined_output,
+    _run_openssh_query,
 )
 
 
@@ -90,6 +92,20 @@ class MthreadsProviderTest(unittest.TestCase):
         self.assertEqual(len(gpus[1]["processes"]), 1)
         self.assertEqual(gpus[1]["processes"][0]["gpu_memory_mb"], 2048.0)
         self.assertNotEqual(gpus[1]["processes"][0]["user"], "unknown")
+
+    @patch("gnvitop.server.subprocess.run")
+    def test_openssh_fallback_uses_argument_list_without_shell(self, run):
+        run.return_value = subprocess.CompletedProcess(
+            args=[], returncode=0, stdout="MTHREADS\nstats", stderr=""
+        )
+
+        output = _run_openssh_query("lab_S5000_28")
+
+        command = run.call_args.args[0]
+        self.assertEqual(output, "MTHREADS\nstats")
+        self.assertEqual(command[0], "ssh")
+        self.assertIn("lab_S5000_28", command)
+        self.assertNotIn("shell", run.call_args.kwargs)
 
 
 if __name__ == "__main__":
