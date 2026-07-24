@@ -526,7 +526,10 @@ def query_gpu(host_info, hosts_by_alias=None):
     except TimeoutError:
         result["error"] = "Connection timed out"
     except OSError as e:
-        result["error"] = f"Connection failed: {e}"
+        try:
+            result = _result_from_output(result, _run_openssh_query(alias))
+        except Exception as fallback_error:
+            result["error"] = f"Connection failed: {e}; OpenSSH fallback failed: {fallback_error}"
     except Exception as e:
         result["error"] = f"{type(e).__name__}: {e}"
     finally:

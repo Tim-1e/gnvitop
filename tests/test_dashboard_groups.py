@@ -39,7 +39,7 @@ class DashboardGroupsTest(unittest.TestCase):
         probe = r"""
 const local = {alias:'localhost', is_local:true, status:'ok',
   gpus:[{name:'NVIDIA GeForce RTX 4090'}]};
-const s5000 = {alias:'lab_S5000_28', is_local:false, status:'ok',
+const s5000 = {alias:'musa-s5000-01', is_local:false, status:'ok',
   gpus:[{name:'MTT S5000'}]};
 const offline = {alias:'lab_A100', is_local:false, status:'error', gpus:[]};
 const later = {alias:'lab_8x4090', is_local:false, status:'ok',

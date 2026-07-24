@@ -11,6 +11,7 @@ from gnvitop.server import (
     _build_mthreads_gpus,
     _parse_combined_output,
     _run_openssh_query,
+    query_gpu,
 )
 
 
@@ -99,13 +100,36 @@ class MthreadsProviderTest(unittest.TestCase):
             args=[], returncode=0, stdout="MTHREADS\nstats", stderr=""
         )
 
-        output = _run_openssh_query("lab_S5000_28")
+        output = _run_openssh_query("musa-node")
 
         command = run.call_args.args[0]
         self.assertEqual(output, "MTHREADS\nstats")
         self.assertEqual(command[0], "ssh")
-        self.assertIn("lab_S5000_28", command)
+        self.assertIn("musa-node", command)
         self.assertNotIn("shell", run.call_args.kwargs)
+
+    @patch("gnvitop.server._run_openssh_query")
+    @patch("gnvitop.server._make_ssh_client")
+    def test_openssh_fallback_handles_proxyjump_resolution_failure(
+        self, make_client, run_openssh
+    ):
+        make_client.side_effect = OSError(-2, "Name or service not known")
+        run_openssh.return_value = f"MTHREADS\n{MTHREADS_OVERVIEW}"
+        host = {
+            "alias": "musa-node",
+            "hostname": "10.0.0.25",
+            "user": "gpu-user",
+            "port": 22,
+            "identity_file": "~/.ssh/id_test",
+            "proxy_jump": "bastion",
+            "proxy_command": None,
+        }
+
+        result = query_gpu(host)
+
+        self.assertEqual(result["status"], "ok")
+        self.assertEqual(len(result["gpus"]), 2)
+        run_openssh.assert_called_once_with("musa-node")
 
 
 if __name__ == "__main__":
