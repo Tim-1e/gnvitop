@@ -60,13 +60,38 @@ _MX_PROC_QUERY = (
     r" fi; done"
 )
 
-# ── Auto-detect: try nvidia-smi first, fall back to mx-smi ───────────────────
-# Output begins with "NVIDIA\n" or "MX\n" so the parser knows which format follows
+# ── mthreads-gmi queries (Moore Threads / MUSA GPUs) ─────────────────────────
+_MTHREADS_PROC_QUERY = (
+    r"""printf '%s\n' "$mthreads_output" """
+    r"| awk '"
+    r"/^Processes:/ { in_process=1; next } "
+    r"in_process && $1 ~ /^[0-9]+$/ && $2 ~ /^[0-9]+$/ { "
+    r"mem=$NF; "
+    r"if (mem ~ /^[[:alpha:]]+$/ && NF >= 5) mem=$(NF-1) mem; "
+    r"""gsub(/[^0-9.]/, "", mem); print $1, $2, mem """
+    r"}'"
+    r" | while read gpu pid mem; do"
+    r" user=$(ps -o user= -p $pid 2>/dev/null | tr -d ' ');"
+    r" comm=$(ps -o comm= -p $pid 2>/dev/null | tr -d ' ');"
+    r' printf "%s,%s,%s,%s,%s\n" "$pid" "$gpu" "$mem" "$user" "$comm";'
+    r" done"
+)
+
+# ── Auto-detect supported accelerators ───────────────────────────────────────
+# Output begins with a vendor marker so the parser knows which format follows.
 COMBINED_CMD = (
-    "if command -v nvidia-smi >/dev/null 2>&1 && nvidia-smi -L >/dev/null 2>&1; then "
+    "if command -v nvidia-smi >/dev/null 2>&1 && "
+    "nvidia-smi --query-gpu=index --format=csv,noheader,nounits 2>/dev/null "
+    "| grep -Eq '^[[:space:]]*[0-9]+[[:space:]]*$'; then "
     "echo NVIDIA; " + _GPU_QUERY + "; echo '---SEP---'; " + _PROC_QUERY + "; "
     "elif command -v mx-smi >/dev/null 2>&1; then "
     "echo MX; mx-smi 2>/dev/null; echo '---SEP---'; " + _MX_PROC_QUERY + "; "
+    "elif command -v mthreads-gmi >/dev/null 2>&1 && "
+    "mthreads_output=$(LC_ALL=C mthreads-gmi 2>/dev/null) && "
+    """printf '%s\n' "$mthreads_output" """
+    "| grep -Eq '^[[:space:]]*[0-9]+[[:space:]]+MTT[[:space:]]'; then "
+    """echo MTHREADS; printf '%s\n' "$mthreads_output"; """
+    "echo '---SEP---'; " + _MTHREADS_PROC_QUERY + "; "
     "elif ls /dev/accel0 >/dev/null 2>&1; then "
     "echo TPU; " + _TPU_CHIP_QUERY + "; echo '---SEP---'; " + _TPU_PROC_QUERY + "; "
     "fi"
@@ -144,8 +169,8 @@ def parse_ssh_config(path):
 def _parse_combined_output(output):
     """Split combined command output into (gpu_part, proc_part, vendor).
 
-    Output may begin with 'NVIDIA', 'MX', or 'TPU' to indicate accelerator vendor.
-    Returns vendor as one of: 'nvidia', 'mx', 'tpu'.
+    Output may begin with 'NVIDIA', 'MX', 'MTHREADS', or 'TPU'.
+    Returns vendor as one of: 'nvidia', 'mx', 'mthreads', 'tpu'.
     """
     vendor = "nvidia"
     lines = output.split("\n")
@@ -153,6 +178,9 @@ def _parse_combined_output(output):
         vendor = "mx"
         output = "\n".join(lines[1:])
     elif lines and lines[0].strip() == "NVIDIA":
+        output = "\n".join(lines[1:])
+    elif lines and lines[0].strip() == "MTHREADS":
+        vendor = "mthreads"
         output = "\n".join(lines[1:])
     elif lines and lines[0].strip() == "TPU":
         vendor = "tpu"
@@ -188,6 +216,42 @@ def _build_gpus(gpu_part):
                 "temperature_c": float(parts[6]),
                 "processes": [],
             })
+    return gpus
+
+
+def _build_mthreads_gpus(output):
+    """Parse the version-tolerant mthreads-gmi overview table."""
+    device_re = re.compile(
+        r"^\s*(\d+)\s+(.+?)\s*\|[^|]+\|\s*(\d+(?:\.\d+)?)%\s+"
+        r"(\d+(?:\.\d+)?)\s*(?:MiB|MB)\s*"
+        r"\(\s*(\d+(?:\.\d+)?)\s*(?:MiB|MB)\s*\)"
+    )
+    temperature_re = re.compile(r"\|\s*(-?\d+(?:\.\d+)?)C(?:\s|$)")
+    gpus = []
+    current_gpu = None
+    for line in output.splitlines():
+        device_match = device_re.search(line)
+        if device_match:
+            mem_used = float(device_match.group(4))
+            mem_total = float(device_match.group(5))
+            current_gpu = {
+                "index": int(device_match.group(1)),
+                "name": device_match.group(2).strip(),
+                "memory_total_mb": mem_total,
+                "memory_used_mb": mem_used,
+                "memory_free_mb": max(mem_total - mem_used, 0),
+                "memory_usage_pct": round(mem_used / mem_total * 100, 1) if mem_total > 0 else 0,
+                "gpu_utilization_pct": float(device_match.group(3)),
+                "temperature_c": 0,
+                "processes": [],
+            }
+            gpus.append(current_gpu)
+            continue
+
+        temperature_match = temperature_re.search(line)
+        if current_gpu is not None and temperature_match:
+            current_gpu["temperature_c"] = float(temperature_match.group(1))
+
     return gpus
 
 
@@ -335,6 +399,66 @@ def _make_ssh_client(hostname, port, user, identity_file, sock=None):
     return client
 
 
+def _result_from_output(result, output):
+    """Return a result dict populated from one combined accelerator query."""
+    gpu_part, proc_part, vendor = _parse_combined_output(output)
+    updated = {**result, "gpus": []}
+    if not gpu_part:
+        updated["status"] = "no_gpu"
+        updated["error"] = "No supported GPU found (tried nvidia-smi, mx-smi, mthreads-gmi, and TPU)"
+        return updated
+
+    if vendor == "mx":
+        gpus = _build_mx_gpus(gpu_part)
+        if proc_part:
+            _attach_mx_processes(gpus, proc_part)
+    elif vendor == "mthreads":
+        gpus = _build_mthreads_gpus(gpu_part)
+        if proc_part:
+            _attach_processes(gpus, proc_part)
+    elif vendor == "tpu":
+        gpus = _build_tpu_gpus(gpu_part)
+        if proc_part:
+            _attach_tpu_processes(gpus, proc_part)
+        updated["is_tpu"] = True
+    else:
+        gpus = _build_gpus(gpu_part)
+        if proc_part:
+            _attach_processes(gpus, proc_part)
+
+    updated["gpus"] = gpus
+    if gpus:
+        updated["status"] = "ok"
+        updated["error"] = None
+    else:
+        updated["status"] = "no_gpu"
+        updated["error"] = "No valid accelerator data returned"
+    return updated
+
+
+def _run_openssh_query(alias):
+    """Run the accelerator probe through the system OpenSSH client."""
+    command = [
+        "ssh",
+        "-F", SSH_CONFIG_PATH,
+        "-o", "BatchMode=yes",
+        "-o", f"ConnectTimeout={SSH_TIMEOUT}",
+        "-o", "ConnectionAttempts=1",
+        alias,
+        "bash -c " + shlex.quote(COMBINED_CMD),
+    ]
+    completed = subprocess.run(
+        command,
+        capture_output=True,
+        text=True,
+        timeout=SSH_TIMEOUT + 10,
+    )
+    if completed.returncode != 0:
+        error = completed.stderr.strip() or f"ssh exited with {completed.returncode}"
+        raise OSError(error[-500:])
+    return completed.stdout.strip()
+
+
 def query_gpu(host_info, hosts_by_alias=None):
     """SSH into a host and query GPU information (single round trip).
 
@@ -390,34 +514,13 @@ def query_gpu(host_info, hosts_by_alias=None):
         output = stdout.read().decode("utf-8").strip()
         client.close()
 
-        gpu_part, proc_part, vendor = _parse_combined_output(output)
-
-        if not gpu_part:
-            result["status"] = "no_gpu"
-            result["error"] = "No supported GPU found (tried nvidia-smi, mx-smi, and TPU)"
-        else:
-            if vendor == "mx":
-                gpus = _build_mx_gpus(gpu_part)
-                if proc_part:
-                    _attach_mx_processes(gpus, proc_part)
-            elif vendor == "tpu":
-                gpus = _build_tpu_gpus(gpu_part)
-                if proc_part:
-                    _attach_tpu_processes(gpus, proc_part)
-                result["is_tpu"] = True
-            else:
-                gpus = _build_gpus(gpu_part)
-                if proc_part:
-                    _attach_processes(gpus, proc_part)
-            result["gpus"] = gpus
-            if gpus:
-                result["status"] = "ok"
-            else:
-                result["status"] = "no_gpu"
-                result["error"] = "No valid accelerator data returned"
+        result = _result_from_output(result, output)
 
     except paramiko.AuthenticationException:
-        result["error"] = "Authentication failed"
+        try:
+            result = _result_from_output(result, _run_openssh_query(alias))
+        except Exception as fallback_error:
+            result["error"] = f"Authentication failed; OpenSSH fallback failed: {fallback_error}"
     except paramiko.SSHException as e:
         result["error"] = f"SSH error: {e}"
     except TimeoutError:
@@ -477,31 +580,7 @@ def query_local_gpu():
             COMBINED_CMD, shell=True, capture_output=True, text=True, timeout=30
         ).stdout.strip()
 
-        gpu_part, proc_part, vendor = _parse_combined_output(output)
-
-        if not gpu_part:
-            result["status"] = "no_gpu"
-            result["error"] = "No supported GPU found (tried nvidia-smi, mx-smi, and TPU)"
-        else:
-            if vendor == "mx":
-                gpus = _build_mx_gpus(gpu_part)
-                if proc_part:
-                    _attach_mx_processes(gpus, proc_part)
-            elif vendor == "tpu":
-                gpus = _build_tpu_gpus(gpu_part)
-                if proc_part:
-                    _attach_tpu_processes(gpus, proc_part)
-                result["is_tpu"] = True
-            else:
-                gpus = _build_gpus(gpu_part)
-                if proc_part:
-                    _attach_processes(gpus, proc_part)
-            result["gpus"] = gpus
-            if gpus:
-                result["status"] = "ok"
-            else:
-                result["status"] = "no_gpu"
-                result["error"] = "No valid accelerator data returned"
+        result = _result_from_output(result, output)
 
     except FileNotFoundError:
         result["status"] = "no_gpu"

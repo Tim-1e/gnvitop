@@ -115,6 +115,84 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
   .drag-handle:hover { color: #94a3b8; }
   .drag-handle:active { cursor: grabbing; }
 
+  .group-toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 16px;
+    border-bottom: 1px solid #334155;
+  }
+  .group-tabs {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    overflow-x: auto;
+  }
+  .group-tab {
+    border: none;
+    border-bottom: 2px solid transparent;
+    background: transparent;
+    color: #64748b;
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 600;
+    padding: 10px 12px;
+    white-space: nowrap;
+  }
+  .group-tab:hover { color: #cbd5e1; }
+  .group-tab.active { color: #f1f5f9; border-bottom-color: #60a5fa; }
+  .group-count {
+    display: inline-block;
+    min-width: 18px;
+    margin-left: 5px;
+    padding: 1px 5px;
+    border-radius: 10px;
+    background: #1e293b;
+    color: #94a3b8;
+    font-size: 10px;
+    text-align: center;
+  }
+  .group-actions { display: flex; gap: 6px; flex-shrink: 0; }
+  .group-btn {
+    padding: 5px 10px;
+    border: 1px solid #334155;
+    border-radius: 7px;
+    background: #1e293b;
+    color: #94a3b8;
+    cursor: pointer;
+    font-size: 12px;
+  }
+  .group-btn:hover { border-color: #475569; color: #e2e8f0; }
+  .group-btn[hidden] { display: none; }
+  .group-editor {
+    display: none;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin: -4px 0 18px;
+    padding: 12px;
+    border: 1px solid #334155;
+    border-radius: 10px;
+    background: #111c31;
+  }
+  .group-editor.open { display: flex; }
+  .group-host-option {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 5px 9px;
+    border: 1px solid #334155;
+    border-radius: 8px;
+    color: #94a3b8;
+    cursor: pointer;
+    font-size: 12px;
+  }
+  .group-host-option:has(input:checked) {
+    border-color: #60a5fa;
+    background: #172554;
+    color: #dbeafe;
+  }
+
   .summary-bar {
     display: flex;
     gap: 16px;
@@ -171,6 +249,11 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
   .host-card.status-error { border-left: 3px solid #ef4444; }
   .host-card.is-local { border-left: 3px solid #60a5fa; }
   .host-card.is-tpu { border-left: 3px solid #a78bfa; }
+  .host-card.group-wsl { border-left-color: #38bdf8; background: linear-gradient(145deg, rgba(56,189,248,0.10), #1e293b 34%); }
+  .host-card.group-ubuntu { border-left-color: #f97316; background: linear-gradient(145deg, rgba(249,115,22,0.10), #1e293b 34%); }
+  .host-card.group-nvidia { border-left-color: #76b900; background: linear-gradient(145deg, rgba(118,185,0,0.10), #1e293b 34%); }
+  .host-card.group-s5000 { border-left-color: #a78bfa; background: linear-gradient(145deg, rgba(167,139,250,0.11), #1e293b 34%); }
+  .host-card.group-offline { border-left-color: #ef4444; background: linear-gradient(145deg, rgba(239,68,68,0.13), #1e293b 34%); }
 
   .host-header {
     padding: 16px 20px;
@@ -205,6 +288,33 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
   .badge-tpu { background: #2e1065; color: #a78bfa; }
 
   .host-body { padding: 16px 20px; }
+  .host-groups {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+    padding: 8px 20px 10px;
+    border-top: 1px solid rgba(51,65,85,0.7);
+  }
+  .host-groups-label {
+    color: #64748b;
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+  .host-group-tag {
+    padding: 2px 7px;
+    border-radius: 10px;
+    background: #0f172a;
+    color: #94a3b8;
+    font-size: 10px;
+    font-weight: 600;
+  }
+  .host-group-tag.group-wsl { color: #7dd3fc; }
+  .host-group-tag.group-ubuntu { color: #fb923c; }
+  .host-group-tag.group-nvidia { color: #a3e635; }
+  .host-group-tag.group-s5000 { color: #c4b5fd; }
+  .host-group-tag.group-offline { color: #f87171; }
 
   .error-msg {
     color: #f87171;
@@ -617,6 +727,21 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
 </div>
 
 <div id="ui-tooltip"></div>
+<div class="group-toolbar">
+  <div class="group-tabs" id="group-tabs">
+    <button class="group-tab active" data-group="all" onclick="setActiveGroup('all')">All</button>
+    <button class="group-tab" data-group="wsl" onclick="setActiveGroup('wsl')">WSL</button>
+    <button class="group-tab" data-group="ubuntu" onclick="setActiveGroup('ubuntu')">Ubuntu</button>
+    <button class="group-tab" data-group="nvidia" onclick="setActiveGroup('nvidia')">NVIDIA</button>
+    <button class="group-tab" data-group="s5000" onclick="setActiveGroup('s5000')">S5000</button>
+    <button class="group-tab" data-group="offline" onclick="setActiveGroup('offline')">Offline</button>
+  </div>
+  <div class="group-actions">
+    <button class="group-btn" id="group-manage-btn" onclick="toggleGroupEditor()">Manage</button>
+    <button class="group-btn" onclick="resetGroups()">Reset</button>
+  </div>
+</div>
+<div class="group-editor" id="group-editor"></div>
 <div class="summary-bar" id="summary-bar"></div>
 <div id="content">
   <div class="loading"><div class="spinner"></div><br>Connecting to hosts...</div>
@@ -657,6 +782,149 @@ let isFirstRender = true;
 let refreshIntervalSecs = parseInt(localStorage.getItem('gnvitop-interval') || '30');
 let hostOrder = JSON.parse(localStorage.getItem('gnvitop-order') || '[]'); // pinned manual order
 
+// GROUP_LOGIC_START
+const GROUP_DEFS = [
+  {id: 'all', label: 'All', editable: false},
+  {id: 'wsl', label: 'WSL', editable: true},
+  {id: 'ubuntu', label: 'Ubuntu', editable: true},
+  {id: 'nvidia', label: 'NVIDIA', editable: true},
+  {id: 's5000', label: 'S5000', editable: true},
+  {id: 'offline', label: 'Offline', editable: false},
+];
+
+function defaultGroupsFor(host) {
+  const alias = (host.alias || '').toLowerCase();
+  const gpuNames = (host.gpus || []).map(g => (g.name || '').toLowerCase()).join(' ');
+  const isWsl = !!host.is_local || alias === 'localhost' || alias.includes('wsl');
+  const isS5000 = alias.includes('s5000') || gpuNames.includes('mtt s5000');
+  const isNvidia = !isS5000 && (
+    !!host.is_local
+    || /a100|a6000|4090|3090|h100|l40/.test(alias)
+    || /nvidia|geforce|tesla|quadro/.test(gpuNames)
+  );
+  const groups = [];
+  if (isWsl) groups.push('wsl');
+  if (!isWsl) groups.push('ubuntu');
+  if (isNvidia) groups.push('nvidia');
+  if (isS5000) groups.push('s5000');
+  return groups;
+}
+
+function groupsForHost(host, overrides) {
+  const custom = overrides && Array.isArray(overrides[host.alias])
+    ? overrides[host.alias]
+    : null;
+  const groups = custom
+    ? GROUP_DEFS.filter(group => group.editable && custom.includes(group.id)).map(group => group.id)
+    : defaultGroupsFor(host);
+  if (host.status !== 'ok') groups.push('offline');
+  return groups;
+}
+
+function primaryGroup(host, groups) {
+  if (host.status !== 'ok') return 'offline';
+  return GROUP_DEFS.find(group => group.editable && groups.includes(group.id))?.id || 'all';
+}
+// GROUP_LOGIC_END
+
+function _loadGroupOverrides() {
+  try {
+    const value = JSON.parse(localStorage.getItem('gnvitop-groups') || 'null');
+    return value && typeof value === 'object' && !Array.isArray(value) ? value : null;
+  } catch (_) {
+    localStorage.removeItem('gnvitop-groups');
+    return null;
+  }
+}
+
+function _escapeHtml(value) {
+  return String(value).replace(/[&<>"']/g, ch => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+  })[ch]);
+}
+
+let groupOverrides = _loadGroupOverrides();
+let activeGroup = localStorage.getItem('gnvitop-active-group') || 'all';
+if (!GROUP_DEFS.some(group => group.id === activeGroup)) activeGroup = 'all';
+let groupEditorOpen = false;
+
+function _hostsInActiveGroup(hosts) {
+  if (activeGroup === 'all') return [...hosts];
+  return hosts.filter(host => groupsForHost(host, groupOverrides).includes(activeGroup));
+}
+
+function setActiveGroup(groupId) {
+  if (!GROUP_DEFS.some(group => group.id === groupId)) return;
+  activeGroup = groupId;
+  groupEditorOpen = false;
+  localStorage.setItem('gnvitop-active-group', groupId);
+  if (lastData) {
+    renderSummary(lastData.hosts);
+    renderHosts(lastData.hosts);
+  }
+}
+
+function toggleGroupEditor() {
+  const group = GROUP_DEFS.find(item => item.id === activeGroup);
+  if (!group || !group.editable) return;
+  groupEditorOpen = !groupEditorOpen;
+  if (lastData) renderGroupBar(lastData.hosts);
+}
+
+function setHostGroup(alias, groupId, enabled) {
+  const group = GROUP_DEFS.find(item => item.id === groupId);
+  const host = lastData?.hosts.find(item => item.alias === alias);
+  if (!group?.editable || !host) return;
+  const memberships = new Set(
+    groupsForHost(host, groupOverrides).filter(id => id !== 'offline')
+  );
+  enabled ? memberships.add(groupId) : memberships.delete(groupId);
+  groupOverrides = {...(groupOverrides || {}), [alias]: [...memberships]};
+  localStorage.setItem('gnvitop-groups', JSON.stringify(groupOverrides));
+  renderSummary(lastData.hosts);
+  renderHosts(lastData.hosts);
+}
+
+function resetGroups() {
+  groupOverrides = null;
+  activeGroup = 'all';
+  groupEditorOpen = false;
+  localStorage.removeItem('gnvitop-groups');
+  localStorage.removeItem('gnvitop-active-group');
+  if (lastData) {
+    renderSummary(lastData.hosts);
+    renderHosts(lastData.hosts);
+  }
+}
+
+function renderGroupBar(hosts) {
+  document.querySelectorAll('.group-tab').forEach(tab => {
+    const group = GROUP_DEFS.find(item => item.id === tab.dataset.group);
+    const count = group.id === 'all'
+      ? hosts.length
+      : hosts.filter(host => groupsForHost(host, groupOverrides).includes(group.id)).length;
+    tab.classList.toggle('active', group.id === activeGroup);
+    tab.innerHTML = `${group.label}<span class="group-count">${count}</span>`;
+  });
+
+  const active = GROUP_DEFS.find(group => group.id === activeGroup);
+  document.getElementById('group-manage-btn').hidden = !active?.editable;
+  const editor = document.getElementById('group-editor');
+  editor.classList.toggle('open', groupEditorOpen && !!active?.editable);
+  if (!groupEditorOpen || !active?.editable) {
+    editor.innerHTML = '';
+    return;
+  }
+
+  editor.innerHTML = _applyHostOrder(hosts).map(host => {
+    const checked = groupsForHost(host, groupOverrides).includes(active.id) ? ' checked' : '';
+    return `<label class="group-host-option"><input type="checkbox" data-alias="${_escapeHtml(host.alias)}"${checked}>${_escapeHtml(host.alias)}</label>`;
+  }).join('');
+  editor.querySelectorAll('input[data-alias]').forEach(input => {
+    input.addEventListener('change', () => setHostGroup(input.dataset.alias, active.id, input.checked));
+  });
+}
+
 function _applyHostOrder(list) {
   if (!hostOrder.length) return list;
   const orderMap = {};
@@ -684,7 +952,16 @@ function _setupDrag(grid) {
       handle.addEventListener('dragend', () => {
         card.classList.remove('dragging');
         grid.querySelectorAll('.host-card').forEach(c => c.classList.remove('drag-over'));
-        hostOrder = [...grid.querySelectorAll('.host-card')].map(c => c.dataset.alias);
+        const visibleOrder = [...grid.querySelectorAll('.host-card')].map(c => c.dataset.alias);
+        const visible = new Set(visibleOrder);
+        const baseOrder = hostOrder.length
+          ? hostOrder
+          : (lastData?.hosts || []).map(host => host.alias);
+        let nextVisible = 0;
+        hostOrder = baseOrder.map(alias =>
+          visible.has(alias) ? visibleOrder[nextVisible++] : alias
+        );
+        hostOrder.push(...visibleOrder.slice(nextVisible));
         localStorage.setItem('gnvitop-order', JSON.stringify(hostOrder));
       });
     }
@@ -887,6 +1164,7 @@ function formatMB(mb) {
 }
 
 function renderSummary(hosts) {
+  hosts = _hostsInActiveGroup(hosts);
   const online = hosts.filter(h => h.status === 'ok');
   const totalGPUs = online.reduce((s, h) => s + h.gpus.length, 0);
   const totalFree = online.reduce((s, h) => s + h.gpus.reduce((gs, g) => gs + g.memory_free_mb, 0), 0);
@@ -997,13 +1275,24 @@ function renderGPU(gpu, hostUser) {
 
 function renderHosts(hosts) {
   const container = document.getElementById('content');
+  renderGroupBar(hosts);
   if (!hosts.length) {
     if (isFirstRender) return; // keep showing the initial loading spinner
     container.innerHTML = '<div class="loading">No hosts found in SSH config.</div>';
     return;
   }
 
-  let filtered = currentMode === 'compact' ? hosts.filter(h => h.status === 'ok') : hosts;
+  let filtered = _hostsInActiveGroup(hosts);
+  if (currentMode === 'compact' && activeGroup !== 'offline') {
+    filtered = filtered.filter(h => h.status === 'ok');
+  }
+  if (!filtered.length) {
+    isFirstRender = false;
+    const group = GROUP_DEFS.find(item => item.id === activeGroup);
+    container.innerHTML = `<div class="loading">No hosts in ${group.label}.</div>`;
+    _updateGlobalWatchBtn();
+    return;
+  }
 
   // Apply manual drag order if set, otherwise auto-sort
   if (hostOrder.length) {
@@ -1040,10 +1329,18 @@ function renderHosts(hosts) {
     }
     const isLocal    = host.is_local;
     const isTpu      = !!host.is_tpu;
+    const hostGroups = groupsForHost(host, groupOverrides);
+    const groupClass = primaryGroup(host, hostGroups);
     const isCollapsed = collapsedHosts.has(host.alias);
     const badgeClass = isLocal ? 'badge-local' : isTpu ? 'badge-tpu' : host.status === 'ok' ? 'badge-ok' : host.status === 'no_gpu' ? 'badge-no_gpu' : 'badge-error';
     const badgeText  = isLocal ? 'Local' : isTpu ? 'TPU' : host.status === 'ok' ? 'Online' : host.status === 'no_gpu' ? 'No GPU' : 'Offline';
-    const cardClass  = `host-card status-${host.status}${isLocal ? ' is-local' : ''}${isTpu ? ' is-tpu' : ''}${isCollapsed ? ' collapsed' : ''}${wasFirst ? ' first-render' : ''}`;
+    const cardClass  = `host-card status-${host.status} group-${groupClass}${isLocal ? ' is-local' : ''}${isTpu ? ' is-tpu' : ''}${isCollapsed ? ' collapsed' : ''}${wasFirst ? ' first-render' : ''}`;
+    const groupTags = hostGroups.length
+      ? hostGroups.map(groupId => {
+          const group = GROUP_DEFS.find(item => item.id === groupId);
+          return `<span class="host-group-tag group-${groupId}">${group.label}</span>`;
+        }).join('')
+      : '<span class="host-group-tag">Ungrouped</span>';
     const collapsedInfo = (isCollapsed && host.status === 'ok')
       ? isTpu
         ? `<div class="collapsed-info">${host.gpus.length} chip${host.gpus.length !== 1 ? 's' : ''} &nbsp;·&nbsp; ${formatMB(host.gpus[0].memory_total_mb * host.gpus.length)} HBM</div>`
@@ -1077,6 +1374,7 @@ function renderHosts(hosts) {
           </div>
         </div>
         <div class="host-body">${body}</div>
+        <div class="host-groups"><span class="host-groups-label">Groups</span>${groupTags}</div>
       </div>
     `;
   }

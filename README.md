@@ -16,7 +16,9 @@
 
 ![960cd5fae22199ece06060e7ec8862a4](https://github.com/user-attachments/assets/2ca35564-c891-4af9-9b30-5ebb0949ba99)
 
-Like [nvitop](https://github.com/XuehaiPan/nvitop), but for **all your servers at once** — NVIDIA GPUs, MetaX GPUs, Google Cloud TPUs, and Gadi NCI compute nodes, displayed as a beautiful web dashboard.
+Like [nvitop](https://github.com/XuehaiPan/nvitop), but for **all your servers at once** — NVIDIA GPUs, Moore Threads/MUSA GPUs, MetaX GPUs, Google Cloud TPUs, and Gadi NCI compute nodes, displayed as a beautiful web dashboard.
+
+> This fork adds Moore Threads/MUSA monitoring and keeps healthy NVIDIA cards visible when another card fails to answer.
 
 ```
 pip install gnvitop
@@ -27,7 +29,7 @@ gnvitop
 
 1. Monitors **local GPU/TPU** automatically (no config needed)
 2. Reads your `~/.ssh/config` and SSH into each remote server
-3. Auto-detects accelerator type: runs `nvidia-smi` (NVIDIA), `mx-smi` (MetaX), or checks `/dev/accel*` (Google TPU)
+3. Auto-detects accelerator type: runs `nvidia-smi` (NVIDIA), `mx-smi` (MetaX), `mthreads-gmi` (Moore Threads/MUSA), or checks `/dev/accel*` (Google TPU)
 4. Displays everything in a real-time web dashboard with **per-user process highlighting**
 5. Auto-refreshes every 30 seconds; SSE streaming shows each server as it responds
 
@@ -106,14 +108,15 @@ Host tpu-v4-8
 ```
 
 2. **SSH key auth** — password-less login should be set up
-3. **Accelerator tools** — `nvidia-smi` (NVIDIA), `mx-smi` (MetaX), or `/dev/accel*` (TPU) on the remote servers
+3. **Accelerator tools** — `nvidia-smi` (NVIDIA), `mx-smi` (MetaX), `mthreads-gmi` (Moore Threads/MUSA), or `/dev/accel*` (TPU) on the remote servers
 
 ## Features
 
 - **Zero config** — reads `~/.ssh/config` automatically, no setup needed
 - **One command** — `pip install gnvitop && gnvitop`, that's it
 - **Local + Remote** — monitors local accelerator alongside all remote servers
-- **Multi-vendor** — supports NVIDIA GPUs (`nvidia-smi`), MetaX GPUs (`mx-smi`), and Google Cloud TPUs
+- **Multi-vendor** — supports NVIDIA GPUs (`nvidia-smi`), Moore Threads/MUSA GPUs (`mthreads-gmi`), MetaX GPUs (`mx-smi`), and Google Cloud TPUs
+- **Moore Threads support** — parses `mthreads-gmi` overview and process data, including S5000 utilization, memory, temperature, PID, user, and process memory
 - **Non-bash shell safe** — wraps remote commands in `bash -c` so it works even if the remote login shell is fish, zsh, etc.
 - **TPU support** — detects Google Cloud TPU chips via `/dev/accel*`, shows chip count and HBM spec (v4: 32 GB/chip); utilization shown as N/A until `torch_xla` is installed
 - **MetaX support** — parses `mx-smi` output for MetaX C500 and compatible GPUs
@@ -188,6 +191,7 @@ For TPU chips, `memory_used_mb` and `gpu_utilization_pct` are `-1` (unknown) unt
 | Monitor remote GPUs | No | Yes |
 | Multiple servers | No | Yes |
 | NVIDIA GPU support | Yes | Yes |
+| Moore Threads/MUSA support | No | Yes |
 | MetaX GPU support | No | Yes |
 | Google Cloud TPU support | No | Yes |
 | Gadi NCI node discovery | No | Yes |
